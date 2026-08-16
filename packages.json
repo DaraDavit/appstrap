@@ -1,0 +1,257 @@
+{
+  "categories": [
+    "Development",
+    "Shell & Terminal",
+    "Browsers",
+    "System & Utilities",
+    "Media",
+    "Communication"
+  ],
+  "apps": [
+    {
+      "name": "git",
+      "category": "Development",
+      "packages": { "default": ["git"] }
+    },
+    {
+      "name": "python",
+      "category": "Development",
+      "bin": "python3",
+      "packages": {
+        "debian": ["python3", "python3-pip", "python3-venv"],
+        "fedora": ["python3", "python3-pip"],
+        "arch": ["python", "python-pip"]
+      }
+    },
+    {
+      "name": "c++",
+      "category": "Development",
+      "bin": "g++",
+      "packages": {
+        "debian": ["build-essential"],
+        "fedora": ["gcc-c++"],
+        "arch": ["base-devel"]
+      }
+    },
+    {
+      "name": "cmake",
+      "category": "Development",
+      "packages": { "default": ["cmake"] }
+    },
+    {
+      "name": "make",
+      "category": "Development",
+      "packages": { "default": ["make"] }
+    },
+    {
+      "name": "nodejs",
+      "category": "Development",
+      "packages": { "default": ["nodejs", "npm"] }
+    },
+    {
+      "name": "neovim",
+      "category": "Development",
+      "packages": { "default": ["neovim"] }
+    },
+    {
+      "name": "go",
+      "category": "Development",
+      "packages": {
+        "debian": ["golang-go"],
+        "fedora": ["golang"],
+        "arch": ["go"]
+      }
+    },
+    {
+      "name": "rust",
+      "category": "Development",
+      "packages": {
+        "debian": ["rustc", "cargo"],
+        "fedora": ["rust", "cargo"],
+        "arch": ["rust"]
+      }
+    },
+    {
+      "name": "docker",
+      "category": "Development",
+      "packages": {
+        "debian": ["docker.io"],
+        "fedora": ["moby-engine", "docker-cli"],
+        "arch": ["docker"]
+      }
+    },
+    {
+      "name": "vscode",
+      "category": "Development",
+      "flatpak": "com.visualstudio.code"
+    },
+    {
+      "name": "fish",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["fish"] }
+    },
+    {
+      "name": "kitty",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["kitty"] }
+    },
+    {
+      "name": "zsh",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["zsh"] }
+    },
+    {
+      "name": "tmux",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["tmux"] }
+    },
+    {
+      "name": "fzf",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["fzf"] }
+    },
+    {
+      "name": "ripgrep",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["ripgrep"] }
+    },
+    {
+      "name": "eza",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["eza"] }
+    },
+    {
+      "name": "zoxide",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["zoxide"] }
+    },
+    {
+      "name": "bat",
+      "category": "Shell & Terminal",
+      "packages": { "default": ["bat"] }
+    },
+    {
+      "name": "brave",
+      "category": "Browsers",
+      "bin": "brave-browser",
+      "packages": {
+        "debian": ["brave-browser"],
+        "fedora": ["brave-browser"]
+      },
+      "setup": {
+        "debian": [
+          "curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg",
+          "echo \"deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main\" > /etc/apt/sources.list.d/brave-browser-release.list"
+        ],
+        "fedora": [
+          "curl -fsSLo /etc/yum.repos.d/brave-browser.repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo",
+          "rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc"
+        ]
+      }
+    },
+    {
+      "name": "firefox",
+      "category": "Browsers",
+      "packages": { "default": ["firefox"] }
+    },
+    {
+      "name": "chromium",
+      "category": "Browsers",
+      "flatpak": "org.chromium.Chromium"
+    },
+    {
+      "name": "btop",
+      "category": "System & Utilities",
+      "packages": { "default": ["btop"] }
+    },
+    {
+      "name": "htop",
+      "category": "System & Utilities",
+      "packages": { "default": ["htop"] }
+    },
+    {
+      "name": "fastfetch",
+      "category": "System & Utilities",
+      "packages": { "default": ["fastfetch"] }
+    },
+    {
+      "name": "curl",
+      "category": "System & Utilities",
+      "packages": { "default": ["curl"] }
+    },
+    {
+      "name": "wget",
+      "category": "System & Utilities",
+      "packages": { "default": ["wget"] }
+    },
+    {
+      "name": "jq",
+      "category": "System & Utilities",
+      "packages": { "default": ["jq"] }
+    },
+    {
+      "name": "rsync",
+      "category": "System & Utilities",
+      "packages": { "default": ["rsync"] }
+    },
+    {
+      "name": "tree",
+      "category": "System & Utilities",
+      "packages": { "default": ["tree"] }
+    },
+    {
+      "name": "ncdu",
+      "category": "System & Utilities",
+      "packages": { "default": ["ncdu"] }
+    },
+    {
+      "name": "unzip",
+      "category": "System & Utilities",
+      "packages": { "default": ["unzip"] }
+    },
+    {
+      "name": "gnupg",
+      "category": "System & Utilities",
+      "packages": { "default": ["gnupg"] }
+    },
+    {
+      "name": "vlc",
+      "category": "Media",
+      "flatpak": "org.videolan.VLC"
+    },
+    {
+      "name": "mpv",
+      "category": "Media",
+      "flatpak": "io.mpv.Mpv"
+    },
+    {
+      "name": "ffmpeg",
+      "category": "Media",
+      "packages": {
+        "debian": ["ffmpeg"],
+        "fedora": ["ffmpeg-free"],
+        "arch": ["ffmpeg"]
+      }
+    },
+    {
+      "name": "obs-studio",
+      "category": "Media",
+      "flatpak": "com.obsproject.Studio"
+    },
+    {
+      "name": "discord",
+      "category": "Communication",
+      "flatpak": "com.discordapp.Discord"
+    },
+    {
+      "name": "telegram",
+      "category": "Communication",
+      "flatpak": "org.telegram.desktop"
+    },
+    {
+      "name": "slack",
+      "category": "Communication",
+      "flatpak": "com.slack.Slack"
+    }
+  ]
+}
