@@ -13,6 +13,9 @@ RED=$'\033[31m'
 GREEN=$'\033[32m'
 YELLOW=$'\033[33m'
 
+# Keep in sync with project(VERSION ...) in CMakeLists.txt.
+VERSION="0.1.0"
+
 GLYPH_OK='✓'
 GLYPH_FAIL='✗'
 GLYPH_MISS='·'
@@ -389,6 +392,31 @@ print_summary() {
     printf '\n'
 }
 
+print_remove_result() {
+    local name="$1" status="$2"
+    case "$status" in
+        1) printf '  %s %s\n' "$(paint "$GREEN" "$GLYPH_OK")" "$name" ;;
+        0) printf '  %s %s %s\n' "$(paint "$DIM" "$GLYPH_MISS")" "$name" "$(dim "(not installed)")" ;;
+        2) printf '  %s %s\n' "$(paint "$RED" "$GLYPH_FAIL")" "$name" ;;
+    esac
+}
+
+print_summary_remove() {
+    local total="$1" removed="$2" skipped="$3" failed="$4"
+    printf '%s apps · %s' "$total" "$(paint "$GREEN" "$removed removed")"
+    [ "$skipped" -gt 0 ] && printf ' · %s' "$(paint "$DIM" "$skipped not installed")"
+    [ "$failed" -gt 0 ] && printf ' · %s' "$(paint "$RED" "$failed failed")"
+    printf '\n'
+}
+
+print_update_result() {
+    local status="$1"
+    case "$status" in
+        1) printf '  %s %s\n' "$(paint "$GREEN" "$GLYPH_OK")" "update complete" ;;
+        2) printf '  %s %s\n' "$(paint "$RED" "$GLYPH_FAIL")" "update failed" ;;
+    esac
+}
+
 print_manifest() {
     printf '%s\n' "$(dim "manifest: $MANIFEST_LABEL ($PM)")"
 }
@@ -402,6 +430,8 @@ usage:
   $prog detect                        show detected distro + package manager
   $prog list [--all] [options]        list apps and install status
   $prog install [apps...] [options]   install all, or only named apps
+  $prog uninstall [apps...] [options] remove all, or only named apps
+  $prog update [options]              upgrade installed apps
   $prog select [options]              interactively pick apps to install
 
 options:
@@ -411,6 +441,7 @@ options:
   --dry-run       print commands without running them
   --force         reinstall even if already detected on PATH
   --color[=MODE]  color output (auto|always|never), or --no-color
+  --version       show version and exit
   -h, --help      show this help
 EOF
 }
@@ -481,6 +512,29 @@ install_command() {
         pacman) echo "pacman -S --noconfirm --needed $args" ;;
         zypper) echo "zypper --non-interactive install $args" ;;
         apk) echo "apk add $args" ;;
+        *) echo "" ;;
+    esac
+}
+
+remove_command() {
+    local args="$*"
+    case "$PM" in
+        apt) echo "apt-get remove -y $args" ;;
+        dnf) echo "dnf remove -y $args" ;;
+        pacman) echo "pacman -R --noconfirm $args" ;;
+        zypper) echo "zypper --non-interactive remove $args" ;;
+        apk) echo "apk del $args" ;;
+        *) echo "" ;;
+    esac
+}
+
+update_command() {
+    case "$PM" in
+        apt) echo "apt-get upgrade -y" ;;
+        dnf) echo "dnf upgrade -y" ;;
+        pacman) echo "pacman -Syu --noconfirm" ;;
+        zypper) echo "zypper --non-interactive update" ;;
+        apk) echo "apk upgrade" ;;
         *) echo "" ;;
     esac
 }
@@ -787,6 +841,141 @@ cmd_install() {
     [ $failed -eq 0 ]
 }
 
+uninstall_app() {
+    local i="$1"
+    local name="${APP_NAMES[$i]}" flat="${APP_FLATPAKS[$i]}" bin="${APP_BINS[$i]}"
+
+    [ "$DRY_RUN" = 1 ] && print_section "$name"
+
+    if ! is_installed "$flat" "$bin"; then
+        if [ "$DRY_RUN" = 1 ]; then
+            if [ -n "$flat" ]; then print_line "not installed (flatpak $flat)"
+            else print_line "not installed ($bin)"; fi
+        fi
+        return 0
+    fi
+
+    if [ -n "$flat" ]; then
+        local cmd="flatpak uninstall -y --user $flat"
+        if [ "$DRY_RUN" = 1 ]; then
+            print_dry_run "$cmd"
+        else
+            run_captured "$cmd" 0
+            if [ "$LAST_RC" != 0 ]; then
+                print_error "flatpak uninstall failed:"
+                printf '%s' "$LAST_OUT"
+                return 2
+            fi
+        fi
+        return 1
+    fi
+
+    local pkgs="${APP_PKGS[$i]}"
+    local pkg_arr=()
+    [ -n "$pkgs" ] && IFS="$IS" read -ra pkg_arr <<< "$pkgs"
+
+    if [ -z "$pkgs" ]; then
+        print_line "no packages mapped for this distro ($PM)"
+        return 2
+    fi
+
+    local cmd; cmd=$(remove_command "${pkg_arr[@]}")
+    if [ -z "$cmd" ]; then
+        print_error "unsupported package manager"
+        return 2
+    fi
+
+    if [ "$DRY_RUN" = 1 ]; then
+        print_dry_run "$cmd" 1
+    else
+        run_captured "$cmd" 1
+        if [ "$LAST_RC" != 0 ]; then
+            print_error "remove failed:"
+            printf '%s' "$LAST_OUT"
+            return 2
+        fi
+    fi
+
+    return 1
+}
+
+cmd_uninstall() {
+    local todo=()
+    local n=${#APP_NAMES[@]}
+    local i name idx
+    if [ $# -eq 0 ]; then
+        for ((i=0;i<n;i++)); do todo+=("$i"); done
+    else
+        for name in "$@"; do
+            idx=-1
+            for ((i=0;i<n;i++)); do [ "${APP_NAMES[$i]}" = "$name" ] && { idx=$i; break; }; done
+            if [ $idx -lt 0 ]; then echo "unknown app: $name (see \`list\`)"; return 1; fi
+            todo+=("$idx")
+        done
+    fi
+    [ ${#todo[@]} -eq 0 ] && { echo "nothing to do (empty manifest?)"; return 1; }
+
+    if [ "$YES" != 1 ] && [ "$DRY_RUN" != 1 ]; then
+        printf 'remove %d app(s)? [y/N] ' "${#todo[@]}"
+        read -r answer
+        case "$answer" in y|Y|yes) ;; *) echo "aborted."; return 0 ;; esac
+    fi
+
+    local removed=0 skipped=0 failed=0 s
+    for i in "${todo[@]}"; do
+        uninstall_app "$i"
+        s=$?
+        case $s in 1) removed=$((removed+1)) ;; 0) skipped=$((skipped+1)) ;; 2) failed=$((failed+1)) ;; esac
+        if [ "$DRY_RUN" = 1 ]; then echo; else print_remove_result "${APP_NAMES[$i]}" "$s"; fi
+    done
+
+    if [ "$DRY_RUN" != 1 ]; then
+        print_summary_remove "${#todo[@]}" "$removed" "$skipped" "$failed"
+    fi
+    [ $failed -eq 0 ]
+}
+
+cmd_update() {
+    [ "$DRY_RUN" = 1 ] && print_section "system"
+    refresh_index
+
+    local cmd; cmd=$(update_command)
+    if [ -n "$cmd" ]; then
+        if [ "$DRY_RUN" = 1 ]; then
+            print_dry_run "$cmd" 1
+        else
+            run_captured "$cmd" 1
+            if [ "$LAST_RC" != 0 ]; then
+                print_error "update failed:"
+                printf '%s' "$LAST_OUT"
+                print_update_result 2
+                return 1
+            fi
+        fi
+    fi
+
+    if ! command -v flatpak >/dev/null 2>&1; then
+        [ "$DRY_RUN" != 1 ] && print_update_result 1
+        return 0
+    fi
+
+    local fcmd="flatpak update -y --user"
+    if [ "$DRY_RUN" = 1 ]; then
+        print_dry_run "$fcmd"
+    else
+        run_captured "$fcmd" 0
+        if [ "$LAST_RC" != 0 ]; then
+            print_error "flatpak update failed:"
+            printf '%s' "$LAST_OUT"
+            print_update_result 2
+            return 1
+        fi
+    fi
+
+    [ "$DRY_RUN" = 1 ] || print_update_result 1
+    return 0
+}
+
 cmd_select() {
     local n=${#APP_NAMES[@]}
     category_order
@@ -955,7 +1144,9 @@ main() {
     local CMD="${1:-select}"
     [ $# -gt 0 ] && shift
 
-    case "$CMD" in -h|--help|help) usage; exit 0 ;; esac
+    case "$CMD" in -h|--help|help) usage; exit 0 ;;
+        -V|--version|version) echo "appstrap $VERSION"; exit 0 ;;
+    esac
 
     local names=()
     while [ $# -gt 0 ]; do
@@ -969,6 +1160,7 @@ main() {
             --color) COLOR=always; shift ;;
             --color=*) COLOR="${1#--color=}"; shift ;;
             -h|--help) usage; exit 0 ;;
+            -V|--version) echo "appstrap $VERSION"; exit 0 ;;
             *) names+=("$1"); shift ;;
         esac
     done
@@ -989,6 +1181,8 @@ main() {
     case "$CMD" in
         list) print_manifest; cmd_list "$ALL"; exit $? ;;
         install) print_manifest; cmd_install "${names[@]}"; exit $? ;;
+        uninstall) print_manifest; cmd_uninstall "${names[@]}"; exit $? ;;
+        update) print_manifest; cmd_update; exit $? ;;
         select) print_manifest; cmd_select; exit $? ;;
         *) echo "unknown command: $CMD" >&2; usage; exit 1 ;;
     esac

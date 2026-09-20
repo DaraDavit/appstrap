@@ -1,0 +1,23 @@
+{
+  "categories": ["Test"],
+  "apps": [
+    {
+      "name": "alpha",
+      "category": "Test",
+      "bin": "alpha",
+      "packages": { "default": ["alpha-pkg"] },
+      "setup": { "default": ["echo setup-alpha"] },
+      "post": ["echo post-alpha"]
+    },
+    {
+      "name": "beta",
+      "category": "Test",
+      "flatpak": "org.test.Beta"
+    },
+    {
+      "name": "gamma",
+      "category": "Test",
+      "packages": { "debian": ["gamma-deb"], "default": ["gamma-pkg"] }
+    }
+  ]
+}

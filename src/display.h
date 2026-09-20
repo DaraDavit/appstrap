@@ -12,6 +12,7 @@ void set_color_mode(ColorMode mode);
 
 // Top-level, unindented output.
 void print_usage(const std::string& prog);
+void print_version(const std::string& prog);
 void print_detect(const Distro& d);
 void print_list(const Config& cfg, const Installer& inst, bool all);
 void print_manifest(const std::string& path, const Distro& d);
@@ -28,7 +29,10 @@ void print_error(const std::string& text);                 // "  error: text"
 
 // Install result + summary.
 void print_result(const std::string& name, InstallStatus status);
+void print_remove_result(const std::string& name, RemoveStatus status);
+void print_update_result(UpdateStatus status);
 void print_summary(int total, int installed, int already, int failed);
+void print_summary_remove(int total, int removed, int skipped, int failed);
 
 // Interactive checkbox picker over `rows`; returns indices of toggled-on rows.
 std::vector<int> checkbox_select(const std::vector<std::string>& rows,

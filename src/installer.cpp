@@ -29,6 +29,19 @@ std::string Installer::install_command(const std::vector<std::string>& pkgs) con
     return "";
 }
 
+std::string Installer::remove_command(const std::vector<std::string>& pkgs) const {
+    std::string args = join(pkgs, " ");
+    const std::string& pm = distro_.package_manager;
+
+    if (pm == "apt") return "apt-get remove -y " + args;
+    if (pm == "dnf") return "dnf remove -y " + args;
+    if (pm == "pacman") return "pacman -R --noconfirm " + args;
+    if (pm == "zypper") return "zypper --non-interactive remove " + args;
+    if (pm == "apk") return "apk del " + args;
+
+    return "";
+}
+
 bool Installer::is_installed(const App& app) const {
     if (!app.flatpak.empty()) {
         return run("flatpak info --user " + app.flatpak).ok();
@@ -210,4 +223,109 @@ InstallStatus Installer::install(const App& app, const InstallOptions& opts) {
 
     run_post(app, opts);
     return InstallStatus::Installed;
+}
+
+RemoveStatus Installer::remove(const App& app, const InstallOptions& opts) {
+    if (opts.dry_run) {
+        print_section(app.name);
+    }
+
+    if (!is_installed(app)) {
+        if (opts.dry_run) {
+            print_line("not installed" +
+                       (app.flatpak.empty() ? " (" + app.bin + ")"
+                                            : " (flatpak " + app.flatpak + ")"));
+        }
+        return RemoveStatus::NotInstalled;
+    }
+
+    // Flatpak remove path.
+    if (!app.flatpak.empty()) {
+        std::string cmd = "flatpak uninstall -y --user " + app.flatpak;
+        if (opts.dry_run) {
+            print_dry_run(cmd);
+        } else {
+            CmdResult r = run(cmd);
+            if (!r.ok()) {
+                print_error("flatpak uninstall failed:");
+                print_raw(r.output);
+                return RemoveStatus::Failed;
+            }
+        }
+        return RemoveStatus::Removed;
+    }
+
+    // Package-manager remove path.
+    std::string family = resolve_family(distro_, app.packages);
+    std::vector<std::string> pkgs;
+    if (!family.empty()) {
+        pkgs = app.packages.at(family);
+    }
+
+    if (pkgs.empty()) {
+        print_line("no packages mapped for this distro (" + distro_.package_manager + ")");
+        return RemoveStatus::Failed;
+    }
+
+    std::string cmd = remove_command(pkgs);
+    if (cmd.empty()) {
+        print_error("unsupported package manager");
+        return RemoveStatus::Failed;
+    }
+
+    if (opts.dry_run) {
+        print_dry_run(cmd, true);
+    } else {
+        CmdResult r = run(cmd, true);
+        if (!r.ok()) {
+            print_error("remove failed:");
+            print_raw(r.output);
+            return RemoveStatus::Failed;
+        }
+    }
+
+    return RemoveStatus::Removed;
+}
+
+UpdateStatus Installer::update(const InstallOptions& opts) {
+    refresh_index(opts);
+
+    const std::string& pm = distro_.package_manager;
+    std::string cmd;
+    if (pm == "apt") cmd = "apt-get upgrade -y";
+    else if (pm == "dnf") cmd = "dnf upgrade -y";
+    else if (pm == "pacman") cmd = "pacman -Syu --noconfirm";
+    else if (pm == "zypper") cmd = "zypper --non-interactive update";
+    else if (pm == "apk") cmd = "apk upgrade";
+
+    if (!cmd.empty()) {
+        if (opts.dry_run) {
+            print_dry_run(cmd, true);
+        } else {
+            CmdResult r = run(cmd, true);
+            if (!r.ok()) {
+                print_error("update failed:");
+                print_raw(r.output);
+                return UpdateStatus::Failed;
+            }
+        }
+    }
+
+    if (!run("command -v flatpak").ok()) {
+        return UpdateStatus::Updated;
+    }
+
+    const std::string fcmd = "flatpak update -y --user";
+    if (opts.dry_run) {
+        print_dry_run(fcmd);
+    } else {
+        CmdResult r = run(fcmd);
+        if (!r.ok()) {
+            print_error("flatpak update failed:");
+            print_raw(r.output);
+            return UpdateStatus::Failed;
+        }
+    }
+
+    return UpdateStatus::Updated;
 }

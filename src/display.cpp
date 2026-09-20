@@ -133,6 +133,8 @@ void print_usage(const std::string& prog) {
         << "  " << prog << " detect                        show detected distro + package manager\n"
         << "  " << prog << " list [--all] [options]        list apps and install status\n"
         << "  " << prog << " install [apps...] [options]   install all, or only named apps\n"
+        << "  " << prog << " uninstall [apps...] [options] remove all, or only named apps\n"
+        << "  " << prog << " update [options]              upgrade installed apps\n"
         << "  " << prog << " select [options]              interactively pick apps to install\n\n"
         << "options:\n"
         << "  --config FILE   path to packages.json (default: ./packages.json or\n"
@@ -142,7 +144,12 @@ void print_usage(const std::string& prog) {
         << "  --dry-run       print commands without running them\n"
         << "  --force         reinstall even if already detected on PATH\n"
         << "  --color[=MODE]  color output (auto|always|never), or --no-color\n"
+        << "  --version       show version and exit\n"
         << "  -h, --help      show this help\n";
+}
+
+void print_version(const std::string& prog) {
+    std::cout << prog << " " << APPSTRAP_VERSION << "\n";
 }
 
 void print_detect(const Distro& d) {
@@ -287,11 +294,49 @@ void print_result(const std::string& name, InstallStatus status) {
     }
 }
 
+void print_remove_result(const std::string& name, RemoveStatus status) {
+    switch (status) {
+        case RemoveStatus::Removed:
+            std::cout << "  " << green(GLYPH_OK) << " " << name << "\n";
+            break;
+        case RemoveStatus::NotInstalled:
+            std::cout << "  " << dim(GLYPH_MISS) << " " << name << " "
+                      << dim("(not installed)") << "\n";
+            break;
+        case RemoveStatus::Failed:
+            std::cout << "  " << red(GLYPH_FAIL) << " " << name << "\n";
+            break;
+    }
+}
+
+void print_update_result(UpdateStatus status) {
+    switch (status) {
+        case UpdateStatus::Updated:
+            std::cout << "  " << green(GLYPH_OK) << " update complete\n";
+            break;
+        case UpdateStatus::Failed:
+            std::cout << "  " << red(GLYPH_FAIL) << " update failed\n";
+            break;
+    }
+}
+
 void print_summary(int total, int installed, int already, int failed) {
     std::cout << std::to_string(total) << " apps · "
               << green(std::to_string(installed) + " installed");
     if (already) {
         std::cout << " · " << dim(std::to_string(already) + " already installed");
+    }
+    if (failed) {
+        std::cout << " · " << red(std::to_string(failed) + " failed");
+    }
+    std::cout << "\n";
+}
+
+void print_summary_remove(int total, int removed, int skipped, int failed) {
+    std::cout << std::to_string(total) << " apps · "
+              << green(std::to_string(removed) + " removed");
+    if (skipped) {
+        std::cout << " · " << dim(std::to_string(skipped) + " not installed");
     }
     if (failed) {
         std::cout << " · " << red(std::to_string(failed) + " failed");

@@ -3,7 +3,7 @@ BIN        := build/appstrap
 CONFIG_DIR := $(HOME)/.config/appstrap
 CMD       ?= select
 
-.PHONY: build run install clean
+.PHONY: build run test install clean
 
 build:
 	cmake -B build
@@ -11,6 +11,9 @@ build:
 
 run: build
 	$(BIN) $(CMD) $(ARGS)
+
+test: build
+	bash tests/run.sh
 
 install: build
 	install -Dm755 $(BIN) "$(PREFIX)/bin/appstrap"

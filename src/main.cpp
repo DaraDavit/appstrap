@@ -88,6 +88,73 @@ int cmd_install(const Config& cfg, Installer& inst, const std::vector<std::strin
     return failed == 0 ? 0 : 1;
 }
 
+int cmd_uninstall(const Config& cfg, Installer& inst, const std::vector<std::string>& names,
+                  const InstallOptions& opts, bool yes) {
+    std::vector<const App*> todo;
+
+    if (names.empty()) {
+        for (const auto& a : cfg.apps) todo.push_back(&a);
+    } else {
+        for (const auto& n : names) {
+            const App* a = cfg.find(n);
+            if (!a) {
+                print_status("unknown app: " + n + " (see `list`)");
+                return 1;
+            }
+            todo.push_back(a);
+        }
+    }
+
+    if (todo.empty()) {
+        print_status("nothing to do (empty manifest?)");
+        return 1;
+    }
+
+    if (!yes && !opts.dry_run) {
+        std::cout << "remove " << todo.size() << " app(s)? [y/N] ";
+        std::cout.flush();
+        std::string answer;
+        std::getline(std::cin, answer);
+        if (answer != "y" && answer != "Y" && answer != "yes") {
+            print_status("aborted.");
+            return 0;
+        }
+    }
+
+    int removed = 0;
+    int skipped = 0;
+    int failed = 0;
+    for (const App* a : todo) {
+        RemoveStatus s = inst.remove(*a, opts);
+        switch (s) {
+            case RemoveStatus::Removed: ++removed; break;
+            case RemoveStatus::NotInstalled: ++skipped; break;
+            case RemoveStatus::Failed: ++failed; break;
+        }
+        if (opts.dry_run) {
+            std::cout << "\n";
+        } else {
+            print_remove_result(a->name, s);
+        }
+    }
+
+    if (!opts.dry_run) {
+        print_summary_remove((int)todo.size(), removed, skipped, failed);
+    }
+    return failed == 0 ? 0 : 1;
+}
+
+int cmd_update(Installer& inst, const InstallOptions& opts) {
+    if (opts.dry_run) {
+        print_section("system");
+    }
+    UpdateStatus s = inst.update(opts);
+    if (!opts.dry_run) {
+        print_update_result(s);
+    }
+    return s == UpdateStatus::Updated ? 0 : 1;
+}
+
 int cmd_select(const Config& cfg, Installer& inst, const InstallOptions& opts, bool yes) {
     std::vector<std::string> rows;
     std::vector<bool> selectable;
@@ -126,6 +193,10 @@ int main(int argc, char** argv) {
         print_usage(argv[0]);
         return 0;
     }
+    if (cmd == "-V" || cmd == "--version" || cmd == "version") {
+        print_version(argv[0]);
+        return 0;
+    }
 
     std::string config_path;
     bool yes = false;
@@ -156,6 +227,9 @@ int main(int argc, char** argv) {
             else set_color_mode(ColorMode::Auto);
         } else if (a == "-h" || a == "--help") {
             print_usage(argv[0]);
+            return 0;
+        } else if (a == "-V" || a == "--version") {
+            print_version(argv[0]);
             return 0;
         } else {
             names.push_back(a);
@@ -188,6 +262,16 @@ int main(int argc, char** argv) {
     if (cmd == "install") {
         print_manifest(config_path, d);
         return cmd_install(cfg, inst, names, opts, yes);
+    }
+
+    if (cmd == "uninstall") {
+        print_manifest(config_path, d);
+        return cmd_uninstall(cfg, inst, names, opts, yes);
+    }
+
+    if (cmd == "update") {
+        print_manifest(config_path, d);
+        return cmd_update(inst, opts);
     }
 
     if (cmd == "select") {
