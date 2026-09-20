@@ -51,9 +51,15 @@ bool Installer::is_installed(const App& app) const {
 
 std::string Installer::source(const App& app) const {
     if (!app.flatpak.empty()) return "flatpak";
-    if (resolve_family(distro_, app.packages).empty()) return "-";
+    if (app_packages(app).empty()) return "-";
     if (distro_.package_manager.empty()) return "-";
     return distro_.package_manager;
+}
+
+std::vector<std::string> Installer::app_packages(const App& app) const {
+    std::string family = resolve_family(distro_, app.packages);
+    if (family.empty()) return {};
+    return app.packages.at(family);
 }
 
 void Installer::refresh_index(const InstallOptions& opts) {
@@ -167,11 +173,7 @@ InstallStatus Installer::install(const App& app, const InstallOptions& opts) {
     }
 
     // Package-manager install path.
-    std::string family = resolve_family(distro_, app.packages);
-    std::vector<std::string> pkgs;
-    if (!family.empty()) {
-        pkgs = app.packages.at(family);
-    }
+    std::vector<std::string> pkgs = app_packages(app);
 
     std::string setup_family = resolve_family(distro_, app.setup);
     bool ran_setup = false;
@@ -256,11 +258,7 @@ RemoveStatus Installer::remove(const App& app, const InstallOptions& opts) {
     }
 
     // Package-manager remove path.
-    std::string family = resolve_family(distro_, app.packages);
-    std::vector<std::string> pkgs;
-    if (!family.empty()) {
-        pkgs = app.packages.at(family);
-    }
+    std::vector<std::string> pkgs = app_packages(app);
 
     if (pkgs.empty()) {
         print_line("no packages mapped for this distro (" + distro_.package_manager + ")");

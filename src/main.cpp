@@ -68,7 +68,10 @@ int cmd_install(const Config& cfg, Installer& inst, const std::vector<std::strin
     int installed = 0;
     int already = 0;
     int failed = 0;
+    int cnt = 0;
     for (const App* a : todo) {
+        ++cnt;
+        if (!opts.dry_run) progress_start(a->name, cnt, (int)todo.size());
         InstallStatus s = inst.install(*a, opts);
         switch (s) {
             case InstallStatus::Installed: ++installed; break;

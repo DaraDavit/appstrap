@@ -54,6 +54,9 @@ public:
     const Distro& distro_;
 
 private:
+    // Packages mapped to this distro's family (empty when none).
+    std::vector<std::string> app_packages(const App& app) const;
+
     void run_post(const App& app, const InstallOptions& opts);
     bool ensure_flatpak(const InstallOptions& opts);
 

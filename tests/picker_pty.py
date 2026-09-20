@@ -66,6 +66,12 @@ sys.stdout.write(text)
 if rc != 0:
     print(f"FAIL: picker exited with code {rc}")
     sys.exit(1)
+if "\x1b[?1049h" not in text:
+    print("FAIL: picker did not enter the alternate screen buffer")
+    sys.exit(1)
+if "\x1b[?1049l" not in text:
+    print("FAIL: picker did not leave the alternate screen buffer")
+    sys.exit(1)
 if expected not in text:
     print(f"FAIL: install command missing: {expected}")
     sys.exit(1)

@@ -656,17 +656,19 @@ dim()    { paint "$DIM" "$@"; }
 
 # ---- output helpers --------------------------------------------------------
 
-print_section() { printf '== %s ==\n' "$*"; }
-print_line()    { printf '  %s\n' "$*"; }
+print_section() { clear_progress; printf '== %s ==\n' "$*"; }
+print_line()    { clear_progress; printf '  %s\n' "$*"; }
 print_dry_run() {
+    clear_progress
     local cmd="$1"; local use_sudo="${2:-0}"
     if [ "$use_sudo" = 1 ]; then printf '  [dry-run] sudo %s\n' "$cmd"
     else printf '  [dry-run] %s\n' "$cmd"; fi
 }
-print_warning() { printf '  %s %s\n' "$(yellow "warning:")" "$*"; }
-print_error()   { printf '  %s %s\n' "$(red "error:")" "$*"; }
+print_warning() { clear_progress; printf '  %s %s\n' "$(yellow "warning:")" "$*"; }
+print_error()   { clear_progress; printf '  %s %s\n' "$(red "error:")" "$*"; }
 
 print_result() {
+    clear_progress
     local name="$1" status="$2"
     case "$status" in
         1) printf '  %s %s\n' "$(paint "$GREEN" "$GLYPH_OK")" "$name" ;;
@@ -684,6 +686,7 @@ print_summary() {
 }
 
 print_remove_result() {
+    clear_progress
     local name="$1" status="$2"
     case "$status" in
         1) printf '  %s %s\n' "$(paint "$GREEN" "$GLYPH_OK")" "$name" ;;
@@ -701,6 +704,7 @@ print_summary_remove() {
 }
 
 print_update_result() {
+    clear_progress
     local status="$1"
     case "$status" in
         1) printf '  %s %s\n' "$(paint "$GREEN" "$GLYPH_OK")" "update complete" ;;
@@ -710,6 +714,36 @@ print_update_result() {
 
 print_manifest() {
     printf '%s\n' "$(dim "manifest: $MANIFEST_LABEL ($PM)")"
+}
+
+# ---- install progress spinner (TTY only) ------------------------------------
+
+SPIN_PID=""
+
+# Stops the spinner and erases its line, if one is pending. Every printer that
+# starts a new line calls this first so captured output never glues onto the
+# progress line.
+clear_progress() {
+    [ -z "$SPIN_PID" ] && return 0
+    kill "$SPIN_PID" 2>/dev/null
+    wait "$SPIN_PID" 2>/dev/null
+    SPIN_PID=""
+    printf '\r\x1b[2K'
+}
+
+spinner_start() {
+    local name="$1" idx="$2" total="$3"
+    printf '  [%d/%d] installing %s ' "$idx" "$total" "$name"
+    (
+        local c
+        while :; do
+            for c in '|' '/' '-' '\'; do
+                printf '\b%s' "$c"
+                sleep 0.1
+            done
+        done
+    ) &
+    SPIN_PID=$!
 }
 
 usage() {
@@ -1123,10 +1157,15 @@ cmd_install() {
         case "$answer" in y|Y|yes) ;; *) echo "aborted."; return 0 ;; esac
     fi
 
-    local installed=0 already=0 failed=0 s
+    local installed=0 already=0 failed=0 s cnt=0
     for i in "${todo[@]}"; do
+        cnt=$((cnt+1))
+        if [ "$DRY_RUN" != 1 ] && [ -t 1 ]; then
+            spinner_start "${APP_NAMES[$i]}" "$cnt" "${#todo[@]}"
+        fi
         install_app "$i"
         s=$?
+        clear_progress
         case $s in 1) installed=$((installed+1)) ;; 0) already=$((already+1)) ;; 2) failed=$((failed+1)) ;; esac
         if [ "$DRY_RUN" = 1 ]; then echo; else print_result "${APP_NAMES[$i]}" "$s"; fi
     done
@@ -1368,16 +1407,19 @@ checkbox_select() {
     local restore
     restore() {
         printf '\033[?25h'
+        printf '\033[?1049l'
         [ -n "$saved" ] && stty "$saved" 2>/dev/null
     }
+    trap 'restore; exit 130' INT TERM
 
-    local render
+    local render first=1
     render() {
         local sel_count=0 j
         for ((j=0;j<n;j++)); do
             [ "${SELECTABLE[$j]}" = 1 ] && [ "${selected[$j]}" = 1 ] && sel_count=$((sel_count+1))
         done
-        printf '\033[H\033[2J'
+        printf '\033[H'
+        if [ "$first" = 1 ]; then printf '\033[2J'; first=0; fi
         printf 'select apps to install:\n'
         local k
         for ((k=scroll; k<n && k<scroll+visible; k++)); do
@@ -1391,10 +1433,12 @@ checkbox_select() {
             [ $k -eq $cursor ] && printf '\033[0m'
             printf '\n'
         done
+        printf '\033[J'
         printf 'selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n' "$sel_count" "$sel_total"
         printf '\n'
     }
 
+    printf '\033[?1049h'
     printf '\033[?25l'
     render
 
@@ -1417,7 +1461,7 @@ checkbox_select() {
             ALL) for ((i=0;i<n;i++)); do [ "${SELECTABLE[$i]}" = 1 ] && selected[$i]=1; done ;;
             CLEAR) for ((i=0;i<n;i++)); do selected[$i]=0; done ;;
             ENTER) done=1 ;;
-            Q) restore; printf '\n'; return 0 ;;
+            Q) trap - INT TERM; restore; printf '\n'; return 0 ;;
         esac
         [ $cursor -lt $scroll ] && scroll=$cursor
         [ $cursor -ge $((scroll+visible)) ] && scroll=$((cursor-visible+1))
@@ -1426,6 +1470,7 @@ checkbox_select() {
         [ $done = 0 ] && render
     done
 
+    trap - INT TERM
     restore
     printf '\n'
 

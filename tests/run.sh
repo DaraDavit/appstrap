@@ -167,6 +167,14 @@ run_impl() {
         check_exit "picker enter" 0 "$rc"
         contains "picker install cmd" "$out" "[dry-run] sudo $install_cmd $gamma_pkg"
     fi
+
+    # install-progress spinner UI (real install, stubbed sudo + package manager)
+    if command -v python3 >/dev/null 2>&1 && [ -n "$launcher" ]; then
+        out=$(python3 "$ROOT/tests/progress_pty.py" "$launcher" "$FIXTURE" "$pm"); rc=$?
+        check_exit "progress exit" 0 "$rc"
+        contains "progress line" "$out" "[1/1] installing gamma"
+        contains "progress result" "$out" "✓ gamma"
+    fi
 }
 
 run_impl cpp

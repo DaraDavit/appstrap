@@ -151,6 +151,9 @@ Fields:
 - Run `install` as your normal user; it uses `sudo` automatically for
   privileged commands. Flatpak apps install per-user (no sudo). You'll be
   prompted for the sudo password when needed.
+- When run on a terminal, `install` shows a live progress line per app
+  (`[2/41] installing git …` with a spinner) that is replaced in place by the
+  result. Output stays plain when piped or with `--dry-run`.
 - `setup` commands assume `curl` is present (it ships by default on most
   distros).
 - Fedora-specific: `ffmpeg` maps to `ffmpeg-free` (full `ffmpeg` needs RPM

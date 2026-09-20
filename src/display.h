@@ -34,6 +34,10 @@ void print_update_result(UpdateStatus status);
 void print_summary(int total, int installed, int already, int failed);
 void print_summary_remove(int total, int removed, int skipped, int failed);
 
+// Live install-progress line with an animated spinner (TTY only; no-op when
+// stdout is not a terminal). Any printer called afterwards clears it first.
+void progress_start(const std::string& name, int index, int total);
+
 // Interactive checkbox picker over `rows`; returns indices of toggled-on rows.
 std::vector<int> checkbox_select(const std::vector<std::string>& rows,
                                  const std::vector<bool>& selectable);

@@ -5,10 +5,14 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <thread>
 
 namespace {
 
@@ -24,6 +28,38 @@ const char* C_YELLOW = "\x1b[33m";
 const char* GLYPH_OK = "\u2713";    // ✓
 const char* GLYPH_FAIL = "\u2717";  // ✗
 const char* GLYPH_MISS = "\u00b7";  // ·
+
+// Saved terminal state for the SIGINT/SIGTERM handler (picker raw mode).
+struct termios g_saved_tios {};
+bool g_tios_saved = false;
+
+void restore_terminal() {
+    if (g_tios_saved) {
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_saved_tios);
+        g_tios_saved = false;
+    }
+    static const char seq[] = "\x1b[?25h\x1b[?1049l";
+    write(STDOUT_FILENO, seq, sizeof(seq) - 1);
+}
+
+void handle_signal(int sig) {
+    restore_terminal();
+    _exit(128 + sig);
+}
+
+// Install-progress spinner (TTY only).
+std::thread g_spinner;
+std::atomic<bool> g_spinner_stop{false};
+bool g_progress_active = false;
+
+void clear_progress() {
+    if (!g_progress_active) return;
+    g_spinner_stop = true;
+    if (g_spinner.joinable()) g_spinner.join();
+    g_progress_active = false;
+    std::fputs("\r\x1b[2K", stdout);
+    std::fflush(stdout);
+}
 
 bool color_enabled() {
     if (g_color_mode == ColorMode::Never) return false;
@@ -59,11 +95,16 @@ struct TermRaw {
         raw.c_cc[VTIME] = 0;
         if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) return false;
         active = true;
+        g_saved_tios = orig;
+        g_tios_saved = true;
         return true;
     }
 
     ~TermRaw() {
-        if (active) tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
+        if (active) {
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig);
+            g_tios_saved = false;
+        }
     }
 };
 
@@ -256,30 +297,37 @@ void print_stderr(const std::string& text) {
 }
 
 void print_raw(const std::string& text) {
+    clear_progress();
     std::cout << text;
 }
 
 void print_section(const std::string& title) {
+    clear_progress();
     std::cout << "== " << title << " ==\n";
 }
 
 void print_line(const std::string& text) {
+    clear_progress();
     std::cout << "  " << text << "\n";
 }
 
 void print_dry_run(const std::string& cmd, bool use_sudo) {
+    clear_progress();
     std::cout << "  [dry-run] " << (use_sudo ? "sudo " : "") << cmd << "\n";
 }
 
 void print_warning(const std::string& text) {
+    clear_progress();
     std::cout << "  " << yellow("warning:") << " " << text << "\n";
 }
 
 void print_error(const std::string& text) {
+    clear_progress();
     std::cout << "  " << red("error:") << " " << text << "\n";
 }
 
 void print_result(const std::string& name, InstallStatus status) {
+    clear_progress();
     switch (status) {
         case InstallStatus::Installed:
             std::cout << "  " << green(GLYPH_OK) << " " << name << "\n";
@@ -295,6 +343,7 @@ void print_result(const std::string& name, InstallStatus status) {
 }
 
 void print_remove_result(const std::string& name, RemoveStatus status) {
+    clear_progress();
     switch (status) {
         case RemoveStatus::Removed:
             std::cout << "  " << green(GLYPH_OK) << " " << name << "\n";
@@ -310,6 +359,7 @@ void print_remove_result(const std::string& name, RemoveStatus status) {
 }
 
 void print_update_result(UpdateStatus status) {
+    clear_progress();
     switch (status) {
         case UpdateStatus::Updated:
             std::cout << "  " << green(GLYPH_OK) << " update complete\n";
@@ -344,6 +394,24 @@ void print_summary_remove(int total, int removed, int skipped, int failed) {
     std::cout << "\n";
 }
 
+void progress_start(const std::string& name, int index, int total) {
+    if (!isatty(STDOUT_FILENO) || g_progress_active) return;
+    std::printf("  [%d/%d] installing %s ", index, total, name.c_str());
+    std::fflush(stdout);
+    g_spinner_stop = false;
+    g_spinner = std::thread([] {
+        static const char frames[] = {'|', '/', '-', '\\'};
+        size_t i = 0;
+        while (!g_spinner_stop.load()) {
+            std::fputc('\b', stdout);
+            std::fputc(frames[i++ % 4], stdout);
+            std::fflush(stdout);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
+    g_progress_active = true;
+}
+
 std::vector<int> checkbox_select(const std::vector<std::string>& rows,
                                  const std::vector<bool>& selectable) {
     const int n = (int)rows.size();
@@ -374,7 +442,15 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
     int visible = (height > 0) ? height - 3 : n;  // title, status, spare bottom line
     if (visible < 1) visible = 1;
 
+    std::fputs("\x1b[?1049h", stdout);  // alternate screen buffer
     std::fputs("\x1b[?25l", stdout);  // hide cursor
+
+    struct sigaction sa {};
+    struct sigaction old_int {};
+    struct sigaction old_term {};
+    sa.sa_handler = handle_signal;
+    sigaction(SIGINT, &sa, &old_int);
+    sigaction(SIGTERM, &sa, &old_term);
 
     auto ensure_visible = [&]() {
         if (cursor < scroll) scroll = cursor;
@@ -383,13 +459,18 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         if (scroll < 0) scroll = 0;
     };
 
+    bool first = true;
     auto render = [&]() {
         int sel_count = 0;
         for (int i = 0; i < n; ++i) {
             if (selectable[i] && selected[i]) ++sel_count;
         }
 
-        std::printf("\x1b[H\x1b[2J");  // home + clear screen
+        std::fputs("\x1b[H", stdout);  // home
+        if (first) {
+            std::fputs("\x1b[2J", stdout);  // clear only on the first frame
+            first = false;
+        }
         std::printf("select apps to install:\n");
         for (int i = scroll; i < n && i < scroll + visible; ++i) {
             if (i == cursor) std::fputs("\x1b[7m", stdout);  // reverse video
@@ -403,6 +484,7 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
             if (i == cursor) std::fputs("\x1b[0m", stdout);
             std::fputs("\n", stdout);
         }
+        std::fputs("\x1b[J", stdout);  // clear any stale tail
         std::printf("selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n",
                     sel_count, sel_total);
         std::fputs("\n", stdout);  // keep the status line off the bottom row
@@ -466,7 +548,10 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
                 break;
             case 'q':
             case K_QUIT:
+                sigaction(SIGINT, &old_int, nullptr);
+                sigaction(SIGTERM, &old_term, nullptr);
                 std::fputs("\x1b[?25h", stdout);  // restore cursor
+                std::fputs("\x1b[?1049l", stdout);  // leave alt screen
                 std::fputs("\n", stdout);
                 return {};
             default:
@@ -476,8 +561,11 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         render();
     }
 
+    sigaction(SIGINT, &old_int, nullptr);
+    sigaction(SIGTERM, &old_term, nullptr);
     std::fputs("\x1b[?25h", stdout);  // restore cursor
     std::fputs("\x1b[0m", stdout);
+    std::fputs("\x1b[?1049l", stdout);  // leave alt screen
     std::fputs("\n", stdout);
 
     std::vector<int> out;
