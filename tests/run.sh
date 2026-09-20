@@ -170,7 +170,9 @@ run_impl() {
 
     # install-progress spinner UI (real install, stubbed sudo + package manager)
     if command -v python3 >/dev/null 2>&1 && [ -n "$launcher" ]; then
-        out=$(python3 "$ROOT/tests/progress_pty.py" "$launcher" "$FIXTURE" "$pm"); rc=$?
+        local pm_cmd="$pm"
+        [ "$pm" = apt ] && pm_cmd="apt-get"
+        out=$(python3 "$ROOT/tests/progress_pty.py" "$launcher" "$FIXTURE" "$pm_cmd"); rc=$?
         check_exit "progress exit" 0 "$rc"
         contains "progress line" "$out" "[1/1] installing gamma"
         contains "progress result" "$out" "✓ gamma"

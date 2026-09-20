@@ -667,6 +667,14 @@ print_dry_run() {
 print_warning() { clear_progress; printf '  %s %s\n' "$(yellow "warning:")" "$*"; }
 print_error()   { clear_progress; printf '  %s %s\n' "$(red "error:")" "$*"; }
 
+# Prints captured command output, guaranteeing a trailing newline so the next
+# line never glues onto the last output line (command substitution strips it).
+print_captured() {
+    [ -n "$1" ] || return 0
+    printf '%s' "$1"
+    case "$1" in *$'\n') ;; *) printf '\n' ;; esac
+}
+
 print_result() {
     clear_progress
     local name="$1" status="$2"
@@ -937,7 +945,7 @@ ensure_flatpak() {
     run_captured "$cmd" 1
     if [ "$LAST_RC" != 0 ]; then
         print_error "failed to install flatpak:"
-        printf '%s' "$LAST_OUT"
+        print_captured "$LAST_OUT"
         return 1
     fi
     flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 \
@@ -983,7 +991,7 @@ install_app() {
             run_captured "$cmd" 0
             if [ "$LAST_RC" != 0 ]; then
                 print_error "flatpak install failed:"
-                printf '%s' "$LAST_OUT"
+                print_captured "$LAST_OUT"
                 return 2
             fi
         fi
@@ -1006,7 +1014,7 @@ install_app() {
         run_captured "$c" 1
         if [ "$LAST_RC" != 0 ]; then
             print_error "setup command failed:"
-            printf '%s' "$LAST_OUT"
+            print_captured "$LAST_OUT"
             return 2
         fi
         ran_setup=1
@@ -1033,7 +1041,7 @@ install_app() {
         run_captured "$cmd" 1
         if [ "$LAST_RC" != 0 ]; then
             print_error "install failed:"
-            printf '%s' "$LAST_OUT"
+            print_captured "$LAST_OUT"
             return 2
         fi
     fi
@@ -1198,7 +1206,7 @@ uninstall_app() {
             run_captured "$cmd" 0
             if [ "$LAST_RC" != 0 ]; then
                 print_error "flatpak uninstall failed:"
-                printf '%s' "$LAST_OUT"
+                print_captured "$LAST_OUT"
                 return 2
             fi
         fi
@@ -1226,7 +1234,7 @@ uninstall_app() {
         run_captured "$cmd" 1
         if [ "$LAST_RC" != 0 ]; then
             print_error "remove failed:"
-            printf '%s' "$LAST_OUT"
+            print_captured "$LAST_OUT"
             return 2
         fi
     fi
@@ -1282,7 +1290,7 @@ cmd_update() {
             run_captured "$cmd" 1
             if [ "$LAST_RC" != 0 ]; then
                 print_error "update failed:"
-                printf '%s' "$LAST_OUT"
+                print_captured "$LAST_OUT"
                 print_update_result 2
                 return 1
             fi
@@ -1301,7 +1309,7 @@ cmd_update() {
         run_captured "$fcmd" 0
         if [ "$LAST_RC" != 0 ]; then
             print_error "flatpak update failed:"
-            printf '%s' "$LAST_OUT"
+            print_captured "$LAST_OUT"
             print_update_result 2
             return 1
         fi
