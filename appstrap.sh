@@ -341,6 +341,297 @@ for app in root.get("apps", []):
                        "\x1e".join(pkgs), "\x1e".join(scmds), "\x1e".join(post), "END"]))
 PYEOF
 
+# ---- pure-bash manifest parser (fallback when python3 is unavailable) ------
+# Parses the manifest subset: objects, arrays of strings, strings (with
+# escapes). Emits the same delimiter-separated stream as the python3 parser.
+
+JBUF=""
+JPOS=0
+JSTR=""
+APP_LINE=""
+ARR_RESULT=()
+MAP_KEYS=()
+MAP_VALS=()
+FAM_RESULT=""
+
+json_skip_ws() {
+    local c
+    while [ "$JPOS" -lt "${#JBUF}" ]; do
+        c="${JBUF:$JPOS:1}"
+        case "$c" in
+            ' '|$'\t'|$'\n'|$'\r') JPOS=$((JPOS+1)) ;;
+            *) return 0 ;;
+        esac
+    done
+}
+
+json_expect() {
+    local ch="$1"
+    json_skip_ws
+    [ "${JBUF:$JPOS:1}" = "$ch" ] || return 1
+    JPOS=$((JPOS+1))
+}
+
+# Reads a JSON string at the current position into JSTR.
+json_string() {
+    json_skip_ws
+    [ "${JBUF:$JPOS:1}" = '"' ] || return 1
+    JPOS=$((JPOS+1))
+    JSTR=""
+    local c
+    while [ "$JPOS" -lt "${#JBUF}" ]; do
+        c="${JBUF:$JPOS:1}"
+        case "$c" in
+            '"') JPOS=$((JPOS+1)); return 0 ;;
+            '\')
+                JPOS=$((JPOS+1))
+                c="${JBUF:$JPOS:1}"
+                case "$c" in
+                    '"') JSTR+='"'; JPOS=$((JPOS+1)) ;;
+                    '\') JSTR+='\'; JPOS=$((JPOS+1)) ;;
+                    '/') JSTR+='/'; JPOS=$((JPOS+1)) ;;
+                    'b') JSTR+=$'\b'; JPOS=$((JPOS+1)) ;;
+                    'f') JSTR+=$'\f'; JPOS=$((JPOS+1)) ;;
+                    'n') JSTR+=$'\n'; JPOS=$((JPOS+1)) ;;
+                    'r') JSTR+=$'\r'; JPOS=$((JPOS+1)) ;;
+                    't') JSTR+=$'\t'; JPOS=$((JPOS+1)) ;;
+                    'u') JPOS=$((JPOS+5)); JSTR+='?' ;;
+                    *) return 1 ;;
+                esac
+                ;;
+            *) JSTR+="$c"; JPOS=$((JPOS+1)) ;;
+        esac
+    done
+    return 1
+}
+
+# Skips a primitive value (number, true/false/null) up to a delimiter.
+json_skip_primitive() {
+    local c
+    while [ "$JPOS" -lt "${#JBUF}" ]; do
+        c="${JBUF:$JPOS:1}"
+        case "$c" in
+            ','|'}'|']'|' '|$'\t'|$'\n'|$'\r') return 0 ;;
+            *) JPOS=$((JPOS+1)) ;;
+        esac
+    done
+}
+
+json_skip_value() {
+    json_skip_ws
+    local c="${JBUF:$JPOS:1}"
+    case "$c" in
+        '"') json_string ;;
+        '{') json_skip_object ;;
+        '[') json_skip_array ;;
+        *) json_skip_primitive ;;
+    esac
+}
+
+json_skip_object() {
+    json_expect '{' || return 1
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = '}' ]; then JPOS=$((JPOS+1)); return 0; fi
+    while :; do
+        json_string || return 1
+        json_expect ':' || return 1
+        json_skip_value || return 1
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            '}') JPOS=$((JPOS+1)); return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
+json_skip_array() {
+    json_expect '[' || return 1
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = ']' ]; then JPOS=$((JPOS+1)); return 0; fi
+    while :; do
+        json_skip_value || return 1
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            ']') JPOS=$((JPOS+1)); return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
+# Parses `[ "a", "b" ]` into ARR_RESULT.
+json_parse_string_array() {
+    ARR_RESULT=()
+    json_expect '[' || return 1
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = ']' ]; then JPOS=$((JPOS+1)); return 0; fi
+    while :; do
+        json_string || return 1
+        ARR_RESULT+=("$JSTR")
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            ']') JPOS=$((JPOS+1)); return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
+# Parses `{ "key": [ ... ], ... }` into parallel MAP_KEYS / MAP_VALS
+# (MAP_VALS entries are \x1e-joined lists).
+json_parse_string_map() {
+    MAP_KEYS=(); MAP_VALS=()
+    json_expect '{' || return 1
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = '}' ]; then JPOS=$((JPOS+1)); return 0; fi
+    while :; do
+        json_string || return 1
+        local k="$JSTR"
+        json_expect ':' || return 1
+        json_parse_string_array || return 1
+        MAP_KEYS+=("$k")
+        MAP_VALS+=("$(IFS="$IS"; echo "${ARR_RESULT[*]}")")
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            '}') JPOS=$((JPOS+1)); return 0 ;;
+            *) return 1 ;;
+        esac
+    done
+}
+
+# Resolves the family key for the parsed map: exact ID, then ID_LIKE tokens,
+# then "default" (mirrors the python3 resolve_family).
+json_resolve_family() {
+    FAM_RESULT=""
+    local i tok
+    for ((i=0;i<${#MAP_KEYS[@]};i++)); do
+        [ "${MAP_KEYS[$i]}" = "$ID" ] && { FAM_RESULT="$ID"; return 0; }
+    done
+    for tok in $ID_LIKE; do
+        for ((i=0;i<${#MAP_KEYS[@]};i++)); do
+            [ "${MAP_KEYS[$i]}" = "$tok" ] && { FAM_RESULT="$tok"; return 0; }
+        done
+    done
+    for ((i=0;i<${#MAP_KEYS[@]};i++)); do
+        [ "${MAP_KEYS[$i]}" = "default" ] && { FAM_RESULT="default"; return 0; }
+    done
+    return 0
+}
+
+# Prints the \x1e-joined items for the currently resolved family ("" if none).
+json_family_items() {
+    local i
+    for ((i=0;i<${#MAP_KEYS[@]};i++)); do
+        [ "${MAP_KEYS[$i]}" = "$FAM_RESULT" ] && { printf '%s' "${MAP_VALS[$i]}"; return 0; }
+    done
+    return 0
+}
+
+# Parses one app object; emits its record into APP_LINE ("" for nameless apps).
+json_parse_app() {
+    json_expect '{' || return 1
+    local name="" bin="" cat="" flat="" pkgs="" scmds="" post=""
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = '}' ]; then JPOS=$((JPOS+1)); APP_LINE=""; return 0; fi
+    while :; do
+        json_string || return 1
+        local key="$JSTR"
+        json_expect ':' || return 1
+        case "$key" in
+            name) json_string || return 1; name="$JSTR" ;;
+            bin) json_string || return 1; bin="$JSTR" ;;
+            category) json_string || return 1; cat="$JSTR" ;;
+            flatpak) json_string || return 1; flat="$JSTR" ;;
+            packages)
+                json_parse_string_map || return 1
+                json_resolve_family
+                pkgs="$(json_family_items)" ;;
+            setup)
+                json_parse_string_map || return 1
+                json_resolve_family
+                scmds="$(json_family_items)" ;;
+            post)
+                json_parse_string_array || return 1
+                post="$(IFS="$IS"; echo "${ARR_RESULT[*]}")" ;;
+            *)
+                json_skip_value || return 1 ;;
+        esac
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            '}') JPOS=$((JPOS+1)); break ;;
+            *) return 1 ;;
+        esac
+    done
+    if [ -z "$name" ]; then APP_LINE=""; return 0; fi
+    [ -n "$bin" ] || bin="$name"
+    printf -v APP_LINE '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1fEND' \
+        "$name" "$bin" "$cat" "$flat" "$pkgs" "$scmds" "$post"
+    return 0
+}
+
+# Parses the top-level manifest; prints the categories line first, then one
+# line per app (mirrors the python3 emit order regardless of key order).
+json_parse_top() {
+    json_expect '{' || return 1
+    local cats=""
+    local app_lines=()
+    json_skip_ws
+    if [ "${JBUF:$JPOS:1}" = '}' ]; then JPOS=$((JPOS+1)); printf '\n'; return 0; fi
+    while :; do
+        json_string || return 1
+        local key="$JSTR"
+        json_expect ':' || return 1
+        case "$key" in
+            categories)
+                json_parse_string_array || return 1
+                cats="$(IFS="$US"; echo "${ARR_RESULT[*]}")" ;;
+            apps)
+                json_expect '[' || return 1
+                json_skip_ws
+                if [ "${JBUF:$JPOS:1}" = ']' ]; then
+                    JPOS=$((JPOS+1))
+                else
+                    while :; do
+                        json_parse_app || return 1
+                        [ -n "$APP_LINE" ] && app_lines+=("$APP_LINE")
+                        json_skip_ws
+                        case "${JBUF:$JPOS:1}" in
+                            ',') JPOS=$((JPOS+1)) ;;
+                            ']') JPOS=$((JPOS+1)); break ;;
+                            *) return 1 ;;
+                        esac
+                    done
+                fi ;;
+            *)
+                json_skip_value || return 1 ;;
+        esac
+        json_skip_ws
+        case "${JBUF:$JPOS:1}" in
+            ',') JPOS=$((JPOS+1)) ;;
+            '}') JPOS=$((JPOS+1)); break ;;
+            *) return 1 ;;
+        esac
+    done
+    printf '%s\n' "$cats"
+    local i
+    for ((i=0;i<${#app_lines[@]};i++)); do printf '%s\n' "${app_lines[$i]}"; done
+    return 0
+}
+
+emit_manifest_bash() {
+    local json_file="$1"
+    if [ -n "$json_file" ]; then
+        JBUF="$(< "$json_file")" || return 1
+    else
+        JBUF="$MANIFEST_JSON"
+    fi
+    JPOS=0
+    json_parse_top
+}
+
 # ---- color helpers ---------------------------------------------------------
 
 color_enabled() {
@@ -473,12 +764,17 @@ detect_distro() {
 }
 
 emit_manifest() {
-    local json_file="$1"
-    if [ -n "$json_file" ]; then
-        python3 -c "$PY_SCRIPT" "$json_file" "$ID" "$ID_LIKE"
-    else
-        printf '%s' "$MANIFEST_JSON" | python3 -c "$PY_SCRIPT" "" "$ID" "$ID_LIKE"
+    local json_file="$1" out
+    if command -v python3 >/dev/null 2>&1; then
+        if [ -n "$json_file" ]; then
+            out=$(python3 -c "$PY_SCRIPT" "$json_file" "$ID" "$ID_LIKE") \
+                && { printf '%s\n' "$out"; return; }
+        else
+            out=$(printf '%s' "$MANIFEST_JSON" | python3 -c "$PY_SCRIPT" "" "$ID" "$ID_LIKE") \
+                && { printf '%s\n' "$out"; return; }
+        fi
     fi
+    emit_manifest_bash "$json_file"
 }
 
 load_manifest() {

@@ -17,10 +17,10 @@ jobs:
       - name: Test (C++ + bash)
         run: bash tests/run.sh
 
-  bash-fedora:
+  bash-no-python3:
     runs-on: ubuntu-latest
     container: fedora:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Test bash port on dnf
+      - name: Test bash port on dnf (no python3 -> pure-bash parser)
         run: bash tests/run.sh bash

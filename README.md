@@ -47,8 +47,9 @@ e.g. `make run CMD=install ARGS="--dry-run"`). `make clean` removes `build/`.
 
 ### Single file (bash)
 
-The bash port has no dependencies beyond `bash` and `python3` (both
-preinstalled on virtually every distro):
+The bash port only needs `bash`. It uses `python3` for manifest parsing when
+available and falls back to a built-in pure-bash parser otherwise — so it also
+runs on minimal systems and fresh machines where python3 isn't installed yet:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/DaraDavit/appstrap/main/appstrap.sh -o appstrap.sh

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Test harness for both appstrap implementations. Run from repo root:
-#   bash tests/run.sh            # runs everything that can run here
-#   bash tests/run.sh bash       # bash port only
-#   bash tests/run.sh cpp        # C++ binary only (needs `make build` first)
+#   bash tests/run.sh                # runs everything that can run here
+#   bash tests/run.sh bash           # bash port only (python3 path)
+#   bash tests/run.sh bash-nopython  # bash port only (pure-bash parser fallback)
+#   bash tests/run.sh cpp            # C++ binary only (needs `make build` first)
 #
 # All assertions use --dry-run so nothing is ever installed or removed.
 set -u
@@ -10,7 +11,8 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FIXTURE="$ROOT/tests/fixtures/basic.json"
 STUB_DIR="$(mktemp -d)"
-trap 'rm -rf "$STUB_DIR"' EXIT
+FAKE_BIN=""
+trap 'rm -rf "$STUB_DIR" "${FAKE_BIN:-}"' EXIT
 
 PASS=0
 FAIL=0
@@ -49,11 +51,21 @@ run_impl() {
         [ -x "$bin" ] || { echo "skip cpp: $bin not built (run make build)"; return 0; }
         label="cpp"
         run() { "$bin" "$@"; }
+    elif [ "$impl" = bash-nopython ]; then
+        # PATH with no python3: forces the pure-bash manifest parser.
+        FAKE_BIN="$(mktemp -d)"
+        ln -s "$(command -v bash)" "$FAKE_BIN/bash"
+        ln -s "$(command -v sh)" "$FAKE_BIN/sh"
+        ln -s "$(command -v cat)" "$FAKE_BIN/cat"
+        ln -s "$(command -v id)" "$FAKE_BIN/id"
+        label="bash (no python3)"
+        run() { PATH="$FAKE_BIN:$STUB_DIR" bash "$ROOT/appstrap.sh" "$@"; }
     else
         label="bash"
         run() { bash "$ROOT/appstrap.sh" "$@"; }
     fi
     echo "== $label =="
+    rm -f "$STUB_DIR"/*
 
     local out rc
 
@@ -149,6 +161,7 @@ run_impl() {
 
 run_impl cpp
 run_impl bash
+run_impl bash-nopython
 
 echo
 echo "$PASS passed, $FAIL failed"
