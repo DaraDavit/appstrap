@@ -163,9 +163,9 @@ run_impl() {
     # interactive picker: Enter must confirm and the selection must flow
     # into install (regression: Enter used to be ignored)
     if command -v python3 >/dev/null 2>&1 && [ -n "$launcher" ]; then
-        out=$(python3 "$ROOT/tests/picker_pty.py" "$launcher" "$FIXTURE" "$install_cmd gamma-pkg"); rc=$?
+        out=$(python3 "$ROOT/tests/picker_pty.py" "$launcher" "$FIXTURE" "$install_cmd $gamma_pkg"); rc=$?
         check_exit "picker enter" 0 "$rc"
-        contains "picker install cmd" "$out" "[dry-run] sudo $install_cmd gamma-pkg"
+        contains "picker install cmd" "$out" "[dry-run] sudo $install_cmd $gamma_pkg"
     fi
 }
 
