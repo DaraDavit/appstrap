@@ -459,18 +459,13 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         if (scroll < 0) scroll = 0;
     };
 
-    bool first_frame = true;
     auto render = [&]() {
         int sel_count = 0;
         for (int i = 0; i < n; ++i) {
             if (selectable[i] && selected[i]) ++sel_count;
         }
 
-        std::fputs("\x1b[H", stdout);  // home
-        if (first_frame) {
-            std::fputs("\x1b[2J", stdout);  // clear only on the first frame
-            first_frame = false;
-        }
+        std::printf("\x1b[H\x1b[2J");  // home + full clear every frame
         std::printf("select apps to install:\n");
         for (int i = scroll; i < n && i < scroll + visible; ++i) {
             if (i == cursor) std::fputs("\x1b[7m", stdout);  // reverse video
@@ -484,7 +479,6 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
             if (i == cursor) std::fputs("\x1b[0m", stdout);
             std::fputs("\n", stdout);
         }
-        std::fputs("\x1b[J", stdout);  // clear any stale tail
         std::printf("selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n",
                     sel_count, sel_total);
         std::fputs("\n", stdout);  // keep the status line off the bottom row

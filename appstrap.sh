@@ -754,6 +754,17 @@ spinner_start() {
     SPIN_PID=$!
 }
 
+# Validates/caches the sudo credential up front so the interactive password
+# prompt appears on its own line, before any spinner or progress output.
+preauth_sudo() {
+    if [ "$DRY_RUN" = 1 ]; then return 0; fi
+    if ! sudo -v; then
+        print_error "sudo authentication failed"
+        return 1
+    fi
+    return 0
+}
+
 usage() {
     local prog="${0##*/}"
     cat <<EOF
@@ -1164,6 +1175,7 @@ cmd_install() {
         read -r answer
         case "$answer" in y|Y|yes) ;; *) echo "aborted."; return 0 ;; esac
     fi
+    preauth_sudo || return 1
 
     local installed=0 already=0 failed=0 s cnt=0
     for i in "${todo[@]}"; do
@@ -1263,6 +1275,7 @@ cmd_uninstall() {
         read -r answer
         case "$answer" in y|Y|yes) ;; *) echo "aborted."; return 0 ;; esac
     fi
+    preauth_sudo || return 1
 
     local removed=0 skipped=0 failed=0 s
     for i in "${todo[@]}"; do
@@ -1280,6 +1293,7 @@ cmd_uninstall() {
 
 cmd_update() {
     [ "$DRY_RUN" = 1 ] && print_section "system"
+    preauth_sudo || return 1
     refresh_index
 
     local cmd; cmd=$(update_command)
@@ -1420,14 +1434,13 @@ checkbox_select() {
     }
     trap 'restore; exit 130' INT TERM
 
-    local render first_frame=1
+    local render
     render() {
         local sel_count=0 j
         for ((j=0;j<n;j++)); do
             [ "${SELECTABLE[$j]}" = 1 ] && [ "${selected[$j]}" = 1 ] && sel_count=$((sel_count+1))
         done
-        printf '\033[H'
-        if [ "$first_frame" = 1 ]; then printf '\033[2J'; first_frame=0; fi
+        printf '\033[H\033[2J'
         printf 'select apps to install:\n'
         local k
         for ((k=scroll; k<n && k<scroll+visible; k++)); do
@@ -1441,7 +1454,6 @@ checkbox_select() {
             [ $k -eq $cursor ] && printf '\033[0m'
             printf '\n'
         done
-        printf '\033[J'
         printf 'selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n' "$sel_count" "$sel_total"
         printf '\n'
     }

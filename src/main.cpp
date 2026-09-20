@@ -9,8 +9,21 @@
 #include "display.h"
 #include "distro.h"
 #include "installer.h"
+#include "runner.h"
 
 namespace {
+
+// Validates/caches the sudo credential up front so the interactive password
+// prompt appears on its own line, before any spinner or progress output.
+bool preauth_sudo(bool dry_run) {
+    if (dry_run) return true;
+    CmdResult r = run("sudo -v");
+    if (!r.ok()) {
+        print_error("sudo authentication failed");
+        return false;
+    }
+    return true;
+}
 
 std::string default_config_path() {
     const char* home = std::getenv("HOME");
@@ -64,6 +77,8 @@ int cmd_install(const Config& cfg, Installer& inst, const std::vector<std::strin
             return 0;
         }
     }
+
+    if (!preauth_sudo(opts.dry_run)) return 1;
 
     int installed = 0;
     int already = 0;
@@ -124,6 +139,8 @@ int cmd_uninstall(const Config& cfg, Installer& inst, const std::vector<std::str
         }
     }
 
+    if (!preauth_sudo(opts.dry_run)) return 1;
+
     int removed = 0;
     int skipped = 0;
     int failed = 0;
@@ -151,6 +168,7 @@ int cmd_update(Installer& inst, const InstallOptions& opts) {
     if (opts.dry_run) {
         print_section("system");
     }
+    if (!preauth_sudo(opts.dry_run)) return 1;
     UpdateStatus s = inst.update(opts);
     if (!opts.dry_run) {
         print_update_result(s);

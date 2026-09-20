@@ -28,6 +28,7 @@ try:
         with open(path, "w") as f:
             f.write("#!/bin/sh\n")
             if name == "sudo":
+                f.write('if [ "$1" = "-v" ]; then exit 0; fi\n')
                 f.write('exec "$@"\n')
             else:
                 f.write("exit 0\n")
