@@ -43,6 +43,8 @@ def drain(dur=0.25):
 
 try:
     drain(0.5)                  # initial render
+    os.write(fd, b"\x1b[H")     # HOME -> must stay on alpha (first selectable)
+    drain(0.2)
     os.write(fd, b"\x1b[B")     # DOWN -> beta
     drain(0.2)
     os.write(fd, b"\x1b[B")     # DOWN -> gamma

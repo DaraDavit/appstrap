@@ -39,7 +39,7 @@ void restore_terminal() {
         g_tios_saved = false;
     }
     static const char seq[] = "\x1b[?25h\x1b[?1049l";
-    write(STDOUT_FILENO, seq, sizeof(seq) - 1);
+    (void)write(STDOUT_FILENO, seq, sizeof(seq) - 1);
 }
 
 void handle_signal(int sig) {
@@ -459,7 +459,7 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         if (scroll < 0) scroll = 0;
     };
 
-    bool first = true;
+    bool first_frame = true;
     auto render = [&]() {
         int sel_count = 0;
         for (int i = 0; i < n; ++i) {
@@ -467,9 +467,9 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         }
 
         std::fputs("\x1b[H", stdout);  // home
-        if (first) {
+        if (first_frame) {
             std::fputs("\x1b[2J", stdout);  // clear only on the first frame
-            first = false;
+            first_frame = false;
         }
         std::printf("select apps to install:\n");
         for (int i = scroll; i < n && i < scroll + visible; ++i) {

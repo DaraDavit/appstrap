@@ -1412,14 +1412,14 @@ checkbox_select() {
     }
     trap 'restore; exit 130' INT TERM
 
-    local render first=1
+    local render first_frame=1
     render() {
         local sel_count=0 j
         for ((j=0;j<n;j++)); do
             [ "${SELECTABLE[$j]}" = 1 ] && [ "${selected[$j]}" = 1 ] && sel_count=$((sel_count+1))
         done
         printf '\033[H'
-        if [ "$first" = 1 ]; then printf '\033[2J'; first=0; fi
+        if [ "$first_frame" = 1 ]; then printf '\033[2J'; first_frame=0; fi
         printf 'select apps to install:\n'
         local k
         for ((k=scroll; k<n && k<scroll+visible; k++)); do
