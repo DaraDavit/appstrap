@@ -1322,7 +1322,7 @@ read_key() {
         return
     fi
     case "$k" in
-        $'\r'|$'\n') echo "ENTER" ;;
+        ''|$'\r'|$'\n') echo "ENTER" ;;
         ' ') echo "SPACE" ;;
         q|Q) echo "Q" ;;
         a|A) echo "ALL" ;;
@@ -1359,7 +1359,7 @@ checkbox_select() {
     local height=0
     [ -n "$size" ] && height="${size%% *}"
     local visible=$n
-    if [ -n "$height" ] && [ "$height" -gt 0 ]; then visible=$((height-2)); fi
+    if [ -n "$height" ] && [ "$height" -gt 0 ]; then visible=$((height-3)); fi
     [ $visible -lt 1 ] && visible=1
 
     local saved; saved=$(stty -g 2>/dev/null)
@@ -1392,6 +1392,7 @@ checkbox_select() {
             printf '\n'
         done
         printf 'selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n' "$sel_count" "$sel_total"
+        printf '\n'
     }
 
     printf '\033[?25l'

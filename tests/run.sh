@@ -45,11 +45,12 @@ make_stub() { # name  -> executable stub in STUB_DIR
 
 run_impl() {
     local impl="$1"
-    local label run bin
+    local label run bin launcher=""
     if [ "$impl" = cpp ]; then
         bin="$ROOT/build/appstrap"
         [ -x "$bin" ] || { echo "skip cpp: $bin not built (run make build)"; return 0; }
         label="cpp"
+        launcher="$bin"
         run() { "$bin" "$@"; }
     elif [ "$impl" = bash-nopython ]; then
         # PATH with no python3: forces the pure-bash manifest parser.
@@ -62,6 +63,7 @@ run_impl() {
         run() { PATH="$FAKE_BIN:$STUB_DIR" bash "$ROOT/appstrap.sh" "$@"; }
     else
         label="bash"
+        launcher="bash $ROOT/appstrap.sh"
         run() { bash "$ROOT/appstrap.sh" "$@"; }
     fi
     echo "== $label =="
@@ -157,6 +159,14 @@ run_impl() {
     check_exit "list with stub" 0 "$rc"
     contains "list marks alpha installed" "$out" "✓ alpha"
     contains "list marks beta missing" "$out" "· beta"
+
+    # interactive picker: Enter must confirm and the selection must flow
+    # into install (regression: Enter used to be ignored)
+    if command -v python3 >/dev/null 2>&1 && [ -n "$launcher" ]; then
+        out=$(python3 "$ROOT/tests/picker_pty.py" "$launcher" "$FIXTURE" "$install_cmd gamma-pkg"); rc=$?
+        check_exit "picker enter" 0 "$rc"
+        contains "picker install cmd" "$out" "[dry-run] sudo $install_cmd gamma-pkg"
+    fi
 }
 
 run_impl cpp

@@ -371,7 +371,7 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
     int scroll = 0;
 
     int height = term_rows();
-    int visible = (height > 0) ? height - 2 : n;  // reserve title + status lines
+    int visible = (height > 0) ? height - 3 : n;  // title, status, spare bottom line
     if (visible < 1) visible = 1;
 
     std::fputs("\x1b[?25l", stdout);  // hide cursor
@@ -405,6 +405,7 @@ std::vector<int> checkbox_select(const std::vector<std::string>& rows,
         }
         std::printf("selected: %d/%d  |  up/down move · space toggle · a all · c clear · enter ok · q quit\n",
                     sel_count, sel_total);
+        std::fputs("\n", stdout);  // keep the status line off the bottom row
         std::fflush(stdout);
     };
 
